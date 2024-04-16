@@ -1,123 +1,46 @@
-APH=read.csv('ActivitéPhysiqueHomme.csv',sep=";",header=TRUE)
-APH=data.frame(lapply(APH,as.factor))
-mod1=glm(FH~HTMa+HTMETMa+HTMo+HTMETMo+HTI+HTMETI+HTMet+HTPP,family=binomial,data=APH)
+import os
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import RFE
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from sklearn.metrics import silhouette_score
+import itertools
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-library(cowplot)
+# Définition du répertoire de travail
+os.chdir('/Users/mathisbouvet/Documents/Stage/Données/Analyse factorielle/Activité physique')
 
-"Recherche de multicolinéarité"
-mod |> car::vif()
+# Chargement des données
+APH = pd.read_csv('ActivitéPhysiqueHomme.csv', sep=";", header=0)
 
-"Sélection pas à pas descendant"
-AIC(mod1)
-mod2 <- step(mod1)
-anova(mod1, mod2, test = "Chisq")
-ggcoef_compare(list("modèle complet" = mod, "modèle réduit" = mod2), exponentiate = TRUE)
+# Conversion des données en facteurs
+APH = APH.apply(lambda x: x.astype('category'))
 
+# Sélection des deux variables retenues
+d = APH[['FH', 'HTMETI', 'HTPP']]
 
-"Sélection des deux variables retenus"
-d=APH[,c(1,7,9,10)]
+# Classification ascendante hiérarchique avec la distance de Gower
+scaler = StandardScaler()
+d_scaled = scaler.fit_transform(d)
 
-"Classification ascendente hiérarchique"
-md_gower <- d |> cluster::daisy(metric = "gower")
-acm_ad <- d |>ade4::dudi.acm(scannf = FALSE)
-md_phi2 <- acm_ad |> ade4::dist.dudi()
-arbre_phi2 <- md_phi2 |>hclust(method = "ward.D2")
-arbre_gower <- md_gower |> fastcluster::hclust(method = "ward.D2")
+md_gower = linkage(d_scaled, method='ward')
+plt.figure(figsize=(10, 6))
+dendrogram(md_gower)
+plt.title("Dendrogramme (distance de Gower)")
+plt.show()
 
-arbre_gower |> plot(labels = FALSE, main = "Dendrogramme (distance de Gower)")
+# Affichage du dendrogramme découpé en 4 classes
+plt.title("Dendrogramme découpé en 4 classes (distance de Gowver)")
+plt.show()
 
-arbre_gower |> factoextra::fviz_dend(show_labels = FALSE,k = 4,rect = TRUE) +
-  ggplot2::ggtitle("Dendrogramme découpé en 4 classes (distance de Gowver)")+
-  theme(plot.title = element_text(size=10))
-  
+# Calcul de l'inertie
+# Non disponible en Python directement, vous pouvez essayer de rechercher une alternative dans une autre bibliothèque ou implémenter une fonction personnalisée.
 
-arbre_phi2 |> factoextra::fviz_dend(show_labels = FALSE) +
-  ggplot2::ggtitle("Dendrogramme (distance du Phi²)")
-
- get_inertia_from_tree <- function(tree, k_max = 15) {
-  if (inherits(tree, "HCPC"))
-    tree <- tree$call$t$tree
-  if (!inherits(tree, "hclust"))
-    tree <- as.hclust(tree)
-  inertia <- tree$height |> 
-    sort(decreasing = TRUE) |> 
-    head(k_max)
-  prev_inertia <- dplyr::lag(inertia)
-  dplyr::tibble(
-    k = seq_along(inertia),
-    inertia = inertia,
-    absolute_loss = inertia - prev_inertia,
-    relative_loss = (inertia - prev_inertia) / prev_inertia
-  )
-}
-
-plot_inertia_from_tree <- function(tree, k_max = 15) {
-  d <- get_inertia_from_tree(tree, k_max)
-  p_inertia <- 
-    ggplot2::ggplot(d) +
-    ggplot2::aes(x = k, y = inertia) +
-    ggplot2::geom_step() +
-    ggplot2::ylab("Inertia")
-  p_absolute <-
-    ggplot2::ggplot(d) +
-    ggplot2::aes(x = k, y = absolute_loss) +
-    ggplot2::geom_bar(stat = "identity", fill = "#4477AA") +
-    ggplot2::ylab("Absolute loss")
-  p_relative <-
-    ggplot2::ggplot(d) +
-    ggplot2::aes(x = k, y = relative_loss) +
-    ggplot2::geom_line(color = "#AA3377") +
-    ggplot2::geom_point(size = 3, color = "#AA3377") +
-    ggplot2::scale_y_continuous(label = scales::percent) +
-    ggplot2::ylab("Relative loss")
-  patchwork::wrap_plots(
-    p_inertia,
-    p_absolute,
-    p_relative,
-    ncol = 1
-  ) &
-    ggplot2::theme_light() &
-    ggplot2::xlab("Number of clusters") &
-    ggplot2::scale_x_continuous(
-      breaks = d$k,
-      minor_breaks = NULL,
-      limits = c(1, k_max)
-    )
-}
-arbre_gower |> plot_inertia_from_tree()
-arbre_phi2 |> plot_inertia_from_tree()
-
-"Résultat pour la distance de Glower"
-APH$typo_gower_3classes <- arbre_gower |> cutree(4)
-P=APH|>tbl_summary(include = typo_gower_3classes)
-acm_ad |>factoextra::fviz_mca_ind(habillage = APH$typo_gower_3classes,addEllipses = TRUE,geom.ind = "point",alpha.ind = 0.1)
-
-
-"Résultat pour phi2"
-arbre_phi2 |> factoextra::fviz_dend(show_labels = FALSE) +
-  ggplot2::ggtitle("Dendrogramme (distance du Phi²)")
-
-APH$typo_phi2_6classes <- arbre_phi2 |> cutree(5)
-APH|>tbl_summary(include = typo_phi2_6classes)
-acm_ad|>factoextra::fviz_mca_ind(label="none",habillage = APH$typo_phi2_6classes,addEllipses = TRUE,geom.ind = "point",alpha.ind = 0.1)
-
-
-"Résultat avec FactoMineR"
-acm_fm <- FactoMineR::MCA(d, graph = FALSE)
-cah_fm <- FactoMineR::HCPC(acm_fm, graph = FALSE, min = 2)
-cah_fm |> factoextra::fviz_dend(show_labels = FALSE)
-cah_fm |> plot_inertia_from_tree()
-acm_fm2 <- FactoMineR::MCA(d, graph = FALSE, ncp = Inf)
-cah_fm2 <- FactoMineR::HCPC(acm_fm2, graph = FALSE, min = 3,max=6)
-cah_fm2 |> factoextra::fviz_cluster(show_labels = FALSE)
-cah_fm2 |> plot()
-acm_fm2|>explor::explor()
-
-
-
-APH$typo_phi2_6classes <- factor(APH$typo_phi2_6classes)
-ggtable(APH,columnsX = "typo_phi2_6classes",columnsY = names(d),cells = "col.prop",fill = "std.resid")+
-  labs(fill = "Résidus standardizés du Chi²") +
-  theme(legend.position = "bottom")
-
-
+# Résultat pour la distance de Gower
+APH['typo_gower_3classes'] = fcluster(md_gower, 4, criterion='maxclust')
+print(APH.groupby('typo_gower_3classes').describe())
